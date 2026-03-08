@@ -5,6 +5,7 @@ import AuthForm from '@/components/AuthForm';
 import WeightForm from '@/components/WeightForm';
 import WeightList from '@/components/WeightList';
 import WeightChart from '@/components/WeightChart';
+import WeightComparison from '@/components/WeightComparison';
 
 interface WeightRecord {
   _id: string;
@@ -29,7 +30,11 @@ export default function Home() {
       });
       if (response.ok) {
         const data = await response.json();
-        setWeights(data);
+        // 按日期逆序排序，最新的记录在前
+        const sortedData = data.sort((a: WeightRecord, b: WeightRecord) => {
+          return new Date(b.date).getTime() - new Date(a.date).getTime();
+        });
+        setWeights(sortedData);
       }
     } catch (error) {
       console.error('Error fetching weights:', error);
@@ -97,6 +102,67 @@ export default function Home() {
     }
   };
 
+  // 生成模拟体重数据
+  const generateMockData = async () => {
+    // 在生产环境中禁用此功能
+    if (process.env.NODE_ENV === 'production') {
+      console.warn('Mock data generation is disabled in production environment');
+      return;
+    }
+    
+    if (!token) return;
+    
+    const weights = [];
+    const startDate = new Date('2025-03-08');
+    const endDate = new Date('2026-03-08');
+    
+    // 初始体重
+    let currentWeight = 75.0;
+    
+    // 模拟体重变化趋势：先下降，然后稳定，最后略有上升
+    for (let date = new Date(startDate); date <= endDate; date.setDate(date.getDate() + 1)) {
+      // 随机波动范围
+      const randomChange = (Math.random() - 0.5) * 0.5;
+      
+      // 前3个月：稳步下降
+      if (date <= new Date('2025-06-08')) {
+        currentWeight = Math.max(70.0, currentWeight - 0.1 + randomChange);
+      }
+      // 中间6个月：相对稳定
+      else if (date <= new Date('2025-12-08')) {
+        currentWeight = Math.max(68.0, currentWeight + randomChange);
+      }
+      // 最后3个月：略有上升
+      else {
+        currentWeight = Math.min(70.0, currentWeight + 0.05 + randomChange);
+      }
+      
+      weights.push({
+        date: date.toISOString().split('T')[0],
+        value: parseFloat(currentWeight.toFixed(1))
+      });
+    }
+    
+    // 批量添加数据
+    for (const weight of weights) {
+      try {
+        await fetch('/api/weight', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify(weight),
+        });
+      } catch (error) {
+        console.error('Error adding mock weight:', error);
+      }
+    }
+    
+    // 刷新数据
+    fetchWeights();
+  };
+
   const calculateStats = () => {
     if (weights.length === 0) return { min: 0, max: 0, average: 0, change: 0 };
 
@@ -145,7 +211,17 @@ export default function Home() {
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <WeightForm onAddWeight={handleAddWeight} />
                 <div className="space-y-4">
-                  <h3 className="text-xl font-semibold">体重统计</h3>
+                  <div className="flex justify-between items-center">
+                    <h3 className="text-xl font-semibold">体重统计</h3>
+                    {process.env.NODE_ENV !== 'production' && (
+                      <button
+                        onClick={generateMockData}
+                        className="bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700"
+                      >
+                        生成一年模拟数据
+                      </button>
+                    )}
+                  </div>
                   <div className="grid grid-cols-2 gap-4">
                     <div className="bg-gray-100 p-4 rounded-md">
                       <p className="text-sm text-gray-600">最低体重</p>
@@ -168,6 +244,10 @@ export default function Home() {
                   </div>
                 </div>
               </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-lg shadow">
+              <WeightComparison weights={weights} />
             </div>
 
             <div className="bg-white p-6 rounded-lg shadow">
